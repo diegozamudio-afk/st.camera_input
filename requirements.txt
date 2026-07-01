@@ -1,5 +1,5 @@
 streamlit
-gspread
-google-auth
 easyocr
 opencv-python-headless
+pillow
+numpy
