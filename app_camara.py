@@ -1,34 +1,49 @@
 import streamlit as st
+import easyocr
+import cv2
+import numpy as np
+from PIL import Image
 from datetime import datetime
 
-st.title("📸 ISAAC - Prueba de Captura en Vivo")
+# 1. Configuración de la IA (Cargamos el modelo una sola vez para que sea rápido)
+@st.cache_resource
+def cargar_modelo_ocr():
+    # 'es' es para español
+    return easyocr.Reader(['es'], gpu=False)
 
-# Componente nativo de Streamlit para acceder a la cámara (móvil o PC)
-foto_capturada = st.camera_input("Enfocar objetivo (Patente / Vehículo)")
+# 2. Función que "lee" la foto
+def procesar_patente(imagen_bytes):
+    reader = cargar_modelo_ocr()
+    # Convertimos los bytes de la foto a una imagen que OpenCV pueda leer
+    img = Image.open(imagen_bytes)
+    img_np = np.array(img)
+    
+    # El lector escanea el texto
+    resultados = reader.readtext(img_np)
+    
+    # Buscamos en los resultados algo que parezca una patente argentina (6 o 7 caracteres)
+    for (bbox, text, prob) in resultados:
+        text = text.replace(" ", "").upper()
+        if 6 <= len(text) <= 7: 
+            return text
+    return None
+
+# 3. Interfaz de ISAAC
+st.title("📸 ISAAC - Escáner LPR Móvil")
+st.write("Captura una patente para validar su estado automáticamente.")
+
+foto_capturada = st.camera_input("Enfocar patente")
 
 if foto_capturada is not None:
-    st.success("¡Imagen capturada exitosamente!")
-    
-    # Mostramos detalles técnicos simulados del disparo
-    st.text(f"Sello de Tiempo: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
-    st.text("Resolución: Optimizada para LPR móvil")
-    
-    # Aquí es donde posteriormente conectarás tu motor OCR/LPR 
-    # st.info("Procesando imagen mediante motor OCR local...")
-    
-    with st.spinner("Simulando análisis de matrícula..."):
-        # En una fase posterior, el resultado de la cámara se enviaría aletoriamente a leer
-        pass
-# Pseudo-código de lo que debe hacer ISAAC ahora
-if foto_capturada is not None:
-    # 1. PASAR POR OCR
-    texto_patente = motor_ocr.detectar(foto_capturada)
-    
-    # 2. VALIDAR
-    if validar_en_base_de_datos(texto_patente) == "VENCIDO":
-        # 3. REGISTRAR
-        link_foto = subir_a_drive(foto_capturada)
-        hoja.append_row([datetime.now(), texto_patente, lat, lon, link_foto])
+    with st.spinner("ISAAC está analizando la matrícula..."):
+        patente_leida = procesar_patente(foto_capturada)
         
-        # 4. AVISAR
-        st.toast("🚨 Patente vencida registrada con éxito", icon="🚨")
+        if patente_leida:
+            st.success(f"✅ Patente detectada: **{patente_leida}**")
+            
+            # Aquí es donde conectarías tu validación contra Google Sheets
+            st.info("Validando en base de datos central...")
+            # [Aquí iría tu lógica de hoja.append_row() ...]
+            
+        else:
+            st.error("❌ No se pudo leer la patente. Asegúrate de que esté bien iluminada y centrada.")
