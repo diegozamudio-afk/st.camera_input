@@ -4,74 +4,68 @@ import cv2
 import numpy as np
 from PIL import Image
 from datetime import datetime
+import gspread
+from google.oauth2.service_account import Credentials
 
-# 1. Configuración de la IA (Cargada una sola vez para velocidad)
+# --- 1. Configuración de Google Sheets ---
+def conectar_sheets():
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/spreadsheets"
+    ]
+    # Usamos los secretos de Streamlit para mayor seguridad
+    creds_dict = st.secrets["gcp_service_account"]
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+    client = gspread.authorize(creds)
+    # Reemplaza 'ISAAC - Monitoreo' con el nombre real de tu archivo en Drive
+    return client.open("ISAAC - Monitoreo").sheet1
+
+# --- 2. Configuración de la IA ---
 @st.cache_resource
 def cargar_modelo_ocr():
-    # 'es' para español, gpu=False para compatibilidad total en dispositivos móviles
     return easyocr.Reader(['es'], gpu=False)
 
-# 2. Función maestra que procesa, limpia y corrige la lectura
+# --- 3. Lógica de procesamiento ---
 def procesar_patente(imagen_bytes):
     reader = cargar_modelo_ocr()
-    
-    # Convertir bytes a imagen PIL y luego a OpenCV
     img = Image.open(imagen_bytes)
     img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
     gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-    
-    # Mejora de contraste: binarización
     _, thresh = cv2.threshold(gray, 120, 255, cv2.THRESH_BINARY)
-    
-    # Lectura
     resultados = reader.readtext(thresh)
     
     for (bbox, text, prob) in resultados:
         text = text.replace(" ", "").upper()
+        # Lógica de corrección por posición
+        lista = list(text)
+        for i in range(len(lista)):
+            if i in [0, 1, 5, 6]: # Posiciones de letras
+                if lista[i] == '0': lista[i] = 'G'
+            elif i in [2, 3, 4]: # Posiciones de números
+                if lista[i] == 'O': lista[i] = '0'
         
-        # --- Lógica de Corrección Inteligente ---
-        # Basada en posiciones de patentes argentinas (ej. AA 123 AA)
-        lista_texto = list(text)
-        for i in range(len(lista_texto)):
-            char = lista_texto[i]
-            
-            # Posiciones que DEBEN ser LETRAS (0,1 y 5,6)
-            if i in [0, 1, 5, 6]:
-                if char == '0': lista_texto[i] = 'G'
-                elif char == '8': lista_texto[i] = 'B'
-                elif char == '1': lista_texto[i] = 'I'
-            
-            # Posiciones que DEBEN ser NÚMEROS (2, 3, 4)
-            elif i in [2, 3, 4]:
-                if char == 'O': lista_texto[i] = '0'
-                elif char == 'G': lista_texto[i] = '6'
-                elif char == 'S': lista_texto[i] = '5'
-        
-        text_corregido = "".join(lista_texto)
-        
-        # Filtro de longitud para validar patente argentina (6 o 7 caracteres)
-        if 6 <= len(text_corregido) <= 7:
-            return text_corregido
-            
+        texto_final = "".join(lista)
+        if 6 <= len(texto_final) <= 7: return texto_final
     return None
 
-# 3. Interfaz de usuario
-st.set_page_config(page_title="ISAAC LPR", page_icon="📸")
-st.title("📸 ISAAC - Escáner LPR Inteligente")
-st.write("ISAAC está listo. Enfoca la patente y dispara la cámara.")
+# --- 4. Interfaz ---
+st.title("📸 ISAAC - Escáner e Impacto en Dash")
+foto = st.camera_input("Capturar Patente")
 
-foto_capturada = st.camera_input("Capturar Patente")
-
-if foto_capturada is not None:
-    with st.spinner("ISAAC analizando imagen y corrigiendo caracteres..."):
-        patente_detectada = procesar_patente(foto_capturada)
-        
-        if patente_detectada:
-            st.success(f"✅ Patente leída correctamente: **{patente_detectada}**")
-            
-            # Aquí dispararías tu lógica de registro en Google Sheets:
-            # hoja.append_row([datetime.now().strftime("%H:%M:%S"), patente_detectada, "PROCESADO"])
-            
-            st.balloons()
+if foto is not None:
+    with st.spinner("Analizando y enviando a la base de datos..."):
+        patente = procesar_patente(foto)
+        if patente:
+            try:
+                hoja = conectar_sheets()
+                fecha = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                # Inyectamos los datos. Ajusta las columnas según tu Sheet
+                hoja.append_row([fecha, patente, "Infracción Detectada por IA"])
+                
+                st.success(f"✅ Patente {patente} enviada al Dashboard correctamente.")
+                st.balloons()
+            except Exception as e:
+                st.error(f"Error al conectar con la base de datos: {e}")
         else:
-            st.error("❌ No se pudo leer la patente.")
+            st.error("No se pudo leer la patente. Reintente.")
