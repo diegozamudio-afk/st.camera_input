@@ -19,3 +19,16 @@ if foto_capturada is not None:
     with st.spinner("Simulando análisis de matrícula..."):
         # En una fase posterior, el resultado de la cámara se enviaría aletoriamente a leer
         pass
+# Pseudo-código de lo que debe hacer ISAAC ahora
+if foto_capturada is not None:
+    # 1. PASAR POR OCR
+    texto_patente = motor_ocr.detectar(foto_capturada)
+    
+    # 2. VALIDAR
+    if validar_en_base_de_datos(texto_patente) == "VENCIDO":
+        # 3. REGISTRAR
+        link_foto = subir_a_drive(foto_capturada)
+        hoja.append_row([datetime.now(), texto_patente, lat, lon, link_foto])
+        
+        # 4. AVISAR
+        st.toast("🚨 Patente vencida registrada con éxito", icon="🚨")
