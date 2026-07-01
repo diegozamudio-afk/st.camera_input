@@ -5,10 +5,10 @@ import numpy as np
 from PIL import Image
 from datetime import datetime
 
-# 1. Configuración de la IA (Cargada una sola vez para que sea rápido)
+# 1. Configuración de la IA (Cargada una sola vez para velocidad)
 @st.cache_resource
 def cargar_modelo_ocr():
-    # El modelo 'es' lee español. gpu=False para compatibilidad móvil total.
+    # 'es' para español, gpu=False para compatibilidad total en dispositivos móviles
     return easyocr.Reader(['es'], gpu=False)
 
 # 2. Función maestra que procesa, limpia y corrige la lectura
@@ -29,18 +29,27 @@ def procesar_patente(imagen_bytes):
     for (bbox, text, prob) in resultados:
         text = text.replace(" ", "").upper()
         
-        # --- Lógica de Corrección Automática ---
-        correcciones = {'8': 'B', '6': 'G', '0': 'O', '1': 'I', '5': 'S', '4': 'A'}
+        # --- Lógica de Corrección Inteligente ---
+        # Basada en posiciones de patentes argentinas (ej. AA 123 AA)
         lista_texto = list(text)
-        
-        # Corregimos posiciones que suelen ser letras en patentes (posiciones 0,1 y 5,6)
         for i in range(len(lista_texto)):
-            if i in [0, 1, 5, 6] and lista_texto[i] in correcciones:
-                lista_texto[i] = correcciones[lista_texto[i]]
+            char = lista_texto[i]
+            
+            # Posiciones que DEBEN ser LETRAS (0,1 y 5,6)
+            if i in [0, 1, 5, 6]:
+                if char == '0': lista_texto[i] = 'G'
+                elif char == '8': lista_texto[i] = 'B'
+                elif char == '1': lista_texto[i] = 'I'
+            
+            # Posiciones que DEBEN ser NÚMEROS (2, 3, 4)
+            elif i in [2, 3, 4]:
+                if char == 'O': lista_texto[i] = '0'
+                elif char == 'G': lista_texto[i] = '6'
+                elif char == 'S': lista_texto[i] = '5'
         
         text_corregido = "".join(lista_texto)
         
-        # Filtro de longitud para validar patente argentina
+        # Filtro de longitud para validar patente argentina (6 o 7 caracteres)
         if 6 <= len(text_corregido) <= 7:
             return text_corregido
             
@@ -48,21 +57,21 @@ def procesar_patente(imagen_bytes):
 
 # 3. Interfaz de usuario
 st.set_page_config(page_title="ISAAC LPR", page_icon="📸")
-st.title("📸 ISAAC - Escáner LPR")
+st.title("📸 ISAAC - Escáner LPR Inteligente")
+st.write("ISAAC está listo. Enfoca la patente y dispara la cámara.")
 
-foto_capturada = st.camera_input("Enfocar patente y disparar")
+foto_capturada = st.camera_input("Capturar Patente")
 
 if foto_capturada is not None:
-    with st.spinner("Analizando placa con IA..."):
+    with st.spinner("ISAAC analizando imagen y corrigiendo caracteres..."):
         patente_detectada = procesar_patente(foto_capturada)
         
         if patente_detectada:
-            st.success(f"✅ Patente leída: **{patente_detectada}**")
+            st.success(f"✅ Patente leída correctamente: **{patente_detectada}**")
             
-            # Aquí disparas tu lógica de registro en Google Sheets
+            # Aquí dispararías tu lógica de registro en Google Sheets:
             # hoja.append_row([datetime.now().strftime("%H:%M:%S"), patente_detectada, "PROCESADO"])
             
             st.balloons()
         else:
             st.error("❌ No se pudo leer la patente.")
-            st.warning("Recomendación: Asegúrate de que la chapa no tenga reflejo de sol directo.")
