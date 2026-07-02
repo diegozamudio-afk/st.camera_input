@@ -69,3 +69,17 @@ if foto is not None:
                 st.error(f"Error al conectar con la base de datos: {e}")
         else:
             st.error("No se pudo leer la patente. Reintente.")
+from datetime import datetime, timedelta
+
+def analizar_estado_vehiculo(patente, vencimiento_str):
+    vencimiento = datetime.strptime(vencimiento_str, "%d/%m/%Y %H:%M")
+    ahora = datetime.now()
+    tiempo_restante = vencimiento - ahora
+    
+    if tiempo_restante <= timedelta(minutes=0):
+        return "MULTAR", "⚠️ Vencido. Proceder a infracción."
+    elif tiempo_restante <= timedelta(hours=1):
+        # Aquí es donde ocurre la magia: agendamos la revisión
+        return "SEGUIMIENTO", "🕒 Restan menos de 60 min. Agendar revisión en esta ubicación."
+    else:
+        return "OK", "Estacionamiento vigente."
